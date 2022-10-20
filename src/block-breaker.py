@@ -5,11 +5,13 @@ from pygame.locals import *
 import math
 import sys
 import pygame.mixer
+import cv2
+import numpy as np
 
 # 画面サイズ
-SCREEN = Rect(0, 0, 400, 400)
+SCREEN = Rect(0, 0, 800, 800)
 
-TITLE, SELECT, GAME = range(3)
+TITLE, SELECT, CAMERA, GAME = range(4)
 
 # バドルのクラス
 class Paddle(pygame.sprite.Sprite):
@@ -148,8 +150,8 @@ class Button():
         self.font = pygame.font.SysFont(None, size)
         self.text = self.font.render(text, True, txtcolor)
         if (center):
-            self.x = x-(self.text.get_width() + pad/2)/2
-            self.y = y+(self.text.get_height() + pad/2)/2
+            self.x = x-(self.text.get_width() + pad//2)//2
+            self.y = y+(self.text.get_height() + pad//2)//2
         self.button = Rect((self.x,self.y), (self.text.get_width() + pad, self.text.get_height() + pad))
         self.buttonUp = 1
     
@@ -168,19 +170,6 @@ class Button():
                     return 1
         return 0
 
-    # def update(self):
-    #     self.button.top = self.y
-        # for event in pygame.event.get():
-        #     if event.type == pygame.MOUSEBUTTONDOWN:
-        #         if self.button.collidepoint(event.pos):
-        #             self.button.top += 2
-        #             self.flag = 1
-        #     if event.type == pygame.MOUSEBUTTONUP:
-        #         if self.button.collidepoint(event.pos):
-        #             if (self.flag == 1):
-        #                 self.buttton.top -= 2
-        #                 self.flag = 2
-
     def draw(self, screen):
         pygame.draw.rect(screen, self.color, self.button)
         screen.blit(self.text, (self.x + self.pad / 2, self.y + self.pad / 2))
@@ -198,9 +187,6 @@ class Title():
         self.start_btn = start_btn
         self.play_bgm()
 
-    def add(self, container):
-        pass
-    
     def update(self):
         pass
 
@@ -209,16 +195,50 @@ class Title():
         self.start_btn.draw(screen)
 
     def play_bgm(self):
-            self.bgm_sound.play()      # BGM
+        self.bgm_sound.play()      # BGM
+
+class Select():
+    def __init__(self):
+        pass
+
+    def update(self):
+        pass
+
+class Camera():
+    def __init__(self, path, video):
+        self.path = path
+        self.video = video
+        self.cap = cv2.VideoCapture(self.video)
+        if not (self.cap.isOpened()):
+            print("cannot open video")
+            exit(1)
+        self.display_size = (800, 600)
+        # self.display = Rect(0, 0, self.video.width, self.video.height)
+        # self.display.left = 10
+        # self.display.top = 10
+
+    def update(self):
+        self.ret, self.frame = self.cap.read()
+        if ( self.ret == False ):
+            print("cannot update video")
+            exit(1)
+        # そのままだと何故か回転してしまうので予め回転しておく
+        self.frame2 = cv2.rotate(self.frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+        self.surface = pygame.pixelcopy.make_surface(cv2.cvtColor(self.frame2, cv2.COLOR_BGR2RGB))
+
+    def draw(self, screen):
+        screen.blit(self.surface, (10,10))
+        # screen.blit(self.frame, (self.display.left, self.display.top))
 
 class block_breaker:
     def __init__(self):
         pygame.init()
         self.screen = pygame.display.set_mode(SCREEN.size)
+        pygame.display.set_caption("Block Breaker")
+        Title.bgm_sound = pygame.mixer.Sound("dq1.wav") # タイトル画面のBGM取得
         Ball.paddle_sound = pygame.mixer.Sound("dq1.wav")    # パドルにボールが衝突した時の効果音取得
         Ball.block_sound = pygame.mixer.Sound("dq1.wav") # ブロックにボールが衝突した時の効果音取得
         Ball.gameover_sound = pygame.mixer.Sound("dq1.wav")    # ゲームオーバー時の効果音取得
-        Title.bgm_sound = pygame.mixer.Sound("dq1.wav") # タイトル画面のBGM取得
         # 描画用のスプライトグループ
         self.game_group = pygame.sprite.RenderUpdates()  
         # 衝突判定用のスプライトグループ
@@ -227,23 +247,18 @@ class block_breaker:
         Paddle.containers = self.game_group
         Ball.containers = self.game_group
         Block.containers = self.game_group, self.blocks
-        # パドルの作成
-        self.paddle = Paddle("paddle.png")
-        #ブロックの作成
-        self.create_block()
-        # スコアを画面(10, 10)に表示
-        self.score = Score(10, 10)    
-        # ボールを作成
-        Ball("ball.png", self.paddle, self.blocks, self.score, 5, 135, 45)
+        self.paddle = Paddle("paddle.png")                                  # パドルの作成
+        self.score = Score(10, 10)                                          # スコアを画面(10, 10)に表示
+        Ball("ball.png", self.paddle, self.blocks, self.score, 5, 135, 45)  # ボールを作成
         # タイトル画面のボタンを作成
-        self.start_btn = Button(SCREEN.centerx, SCREEN.height * 0.6, 32, 16, (255, 0, 0), (255, 255, 255), "START", True)
-        # タイトル画面
-        self.title = Title("logo.png", self.start_btn)
-        # セレクト画面
-        self.select =  Select()
-        # メインループを起動
-        self.game_state = TITLE
-        self.main_loop()
+        self.start_btn = Button(SCREEN.centerx, SCREEN.height * 0.6, 80, 16, (255, 0, 0), (255, 255, 255), "START", True)
+        self.title = Title("logo.png", self.start_btn)                      # タイトル画面
+        print(self.title.logo)
+        self.select =  Select()                                             # セレクト画面
+        # カメラ
+        self.camera = Camera('/home/denjo/experiment/cvgl/opencv/data/haarcascades/haarcascade_frontalface_default.xml', 0) 
+        self.game_state = TITLE                                             # ゲームの状態をTITLEにする
+        self.main_loop()                                                    # メインループを起動
     
     def main_loop(self):    
         clock = pygame.time.Clock()
@@ -259,10 +274,11 @@ class block_breaker:
         if self.game_state == TITLE:
             self.title.update()
         elif self.game_state == SELECT:
-            # self.select.update()
-            pass
+            self.select.update()
+        elif self.game_state == CAMERA:
+            self.camera.update()
         elif self.game_state == GAME:
-            self.game_group.update()
+            self.game_group.update()        # 全てのスプライトグループを更新
 
     def render(self):
         """ゲームオブジェクトのレンダリング"""
@@ -271,16 +287,14 @@ class block_breaker:
             self.title.draw(self.screen)
         elif self.game_state == SELECT:
             self.screen.fill((0,128,0))
+            self.game_state = CAMERA
+        elif self.game_state == CAMERA:
+            self.camera.draw(self.screen)
         elif self.game_state == GAME:
             self.screen.fill((0,20,0))
-            # 全てのスプライトグループを更新
-            self.game_group.update()
-            # 全てのスプライトグループを描画       
-            self.game_group.draw(self.screen)
-            # スコアを描画  
-            self.score.draw(self.screen) 
-            # 画面更新 
-            pygame.display.update()
+            self.game_group.draw(self.screen)   # 全てのスプライトグループを描画 
+            self.score.draw(self.screen)        # スコアを描画  
+            pygame.display.update()             # 画面更新 
     
     def create_block(self):
         # ブロックの作成(14*10)
@@ -302,6 +316,8 @@ class block_breaker:
                 self.title_handler(event)
             elif self.game_state == SELECT:
                 self.select_handler(event)
+            elif self.game_state == CAMERA:
+                self.camera_handler(event)
             elif self.game_state == GAME:
                 self.game_handler(event)
 
@@ -312,6 +328,12 @@ class block_breaker:
     
     def select_handler(self, event):
         """セレクト画面のイベントハンドラ"""
+        pass
+    
+    def camera_handler(self, event):
+        pass
+    
+    def game_handler(self, event):
         pass
 
 if __name__ == "__main__":
