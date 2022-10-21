@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from ctypes.wintypes import tagRECT
+# from block-breaker.sample.sample import LEFT
 import pygame
 from pygame.locals import *
 import math
@@ -9,9 +10,17 @@ import cv2
 import numpy as np
 
 # 画面サイズ
-SCREEN = Rect(0, 0, 800, 800)
+CAMERA_WIDTH = 640
+CAMERA_HEIGHT = 480
+CAMERA_MARGIN = 40
 
-TITLE, SELECT, CAMERA, GAME = range(4)
+CAMERA_AREA = Rect(0, 0, CAMERA_WIDTH+CAMERA_MARGIN*2, CAMERA_HEIGHT+CAMERA_MARGIN*2)
+CAMERA_FRAME = Rect(CAMERA_MARGIN, CAMERA_MARGIN, CAMERA_WIDTH, CAMERA_HEIGHT)
+LEFT_AREA = Rect(0, 0, CAMERA_AREA.width, CAMERA_AREA.height+320)
+RIGHT_AREA = Rect(LEFT_AREA.width, 0, 320, LEFT_AREA.height)
+SCREEN = Rect(0, 0, LEFT_AREA.width+RIGHT_AREA.width, LEFT_AREA.height)
+
+TITLE, SELECT, CAMERA, RECOGNIZE, GAME = range(5)
 
 # バドルのクラス
 class Paddle(pygame.sprite.Sprite):
@@ -20,11 +29,11 @@ class Paddle(pygame.sprite.Sprite):
         pygame.sprite.Sprite.__init__(self, self.containers)
         self.image = pygame.image.load(filename).convert()
         self.rect = self.image.get_rect()
-        self.rect.bottom = SCREEN.bottom - 20        # パドルのy座標
+        self.rect.bottom = LEFT_AREA.bottom - 20        # パドルのy座標
 
     def update(self):
         self.rect.centerx = pygame.mouse.get_pos()[0]  # マウスのx座標をパドルのx座標に
-        self.rect.clamp_ip(SCREEN)                     # ゲーム画面内のみで移動
+        self.rect.clamp_ip(LEFT_AREA)                     # ゲーム画面内のみで移動
 
 # ボールのクラス
 class Ball(pygame.sprite.Sprite):
@@ -61,14 +70,14 @@ class Ball(pygame.sprite.Sprite):
         self.rect.centery += self.dy
 
         # 壁との反射
-        if self.rect.left < SCREEN.left:    # 左側
-            self.rect.left = SCREEN.left
+        if self.rect.left < LEFT_AREA.left:    # 左側
+            self.rect.left = LEFT_AREA.left
             self.dx = -self.dx              # 速度を反転
-        if self.rect.right > SCREEN.right:  # 右側
-            self.rect.right = SCREEN.right
+        if self.rect.right > LEFT_AREA.right:  # 右側
+            self.rect.right = LEFT_AREA.right
             self.dx = -self.dx
-        if self.rect.top < SCREEN.top:      # 上側
-            self.rect.top = SCREEN.top
+        if self.rect.top < LEFT_AREA.top:      # 上側
+            self.rect.top = LEFT_AREA.top
             self.dy = -self.dy
 
         # パドルとの反射(左端:135度方向, 右端:45度方向, それ以外:線形補間)
@@ -85,7 +94,7 @@ class Ball(pygame.sprite.Sprite):
             self.paddle_sound.play()                    # 反射音
 
         # ボールを落とした場合
-        if self.rect.top > SCREEN.bottom:
+        if self.rect.top > LEFT_AREA.bottom:
             self.update = self.start                    # ボールを初期状態に
             self.gameover_sound.play()
             self.hit = 0
@@ -126,8 +135,8 @@ class Block(pygame.sprite.Sprite):
         self.image = pygame.image.load(filename).convert()
         self.rect = self.image.get_rect()
         # ブロックの左上座標
-        self.rect.left = SCREEN.left + x * self.rect.width
-        self.rect.top = SCREEN.top + y * self.rect.height
+        self.rect.left = LEFT_AREA.left + x * self.rect.width
+        self.rect.top = LEFT_AREA.top + y * self.rect.height
 
 # スコアのクラス
 class Score():
@@ -154,6 +163,7 @@ class Button():
             self.y = y+(self.text.get_height() + pad//2)//2
         self.button = Rect((self.x,self.y), (self.text.get_width() + pad, self.text.get_height() + pad))
         self.buttonUp = 1
+        self.hide = True
     
     def pushed(self, event):
         self.button.top = self.y
@@ -171,8 +181,9 @@ class Button():
         return 0
 
     def draw(self, screen):
-        pygame.draw.rect(screen, self.color, self.button)
-        screen.blit(self.text, (self.x + self.pad / 2, self.y + self.pad / 2))
+        if self.hide == False:
+            pygame.draw.rect(screen, self.color, self.button)
+            screen.blit(self.text, (self.x + self.pad / 2, self.y + self.pad / 2))
 
 class Title():
     """タイトル画面"""
@@ -191,6 +202,7 @@ class Title():
         pass
 
     def draw(self, screen):
+        screen.fill((128,0,0))
         screen.blit(self.logo_img, (self.logo_img_rect.left, self.logo_img_rect.top))
         self.start_btn.draw(screen)
 
@@ -205,37 +217,82 @@ class Select():
         pass
 
 class Camera():
-    def __init__(self, path, video):
+    def __init__(self, path, video, detect_btn, playgame_btn, reshoot_btn):
         self.path = path
         self.video = video
-        self.cap = cv2.VideoCapture(self.video)
+        self.detect_btn = detect_btn
+        self.playgame_btn = playgame_btn
+        self.reshoot_btn = reshoot_btn
+        self.cascade = cv2.CascadeClassifier(self.path)     # カスケード
+        self.cap = cv2.VideoCapture(self.video)             # ビデオキャプチャ
         if not (self.cap.isOpened()):
             print("cannot open video")
             exit(1)
-        self.display_size = (800, 600)
-        # self.display = Rect(0, 0, self.video.width, self.video.height)
-        # self.display.left = 10
-        # self.display.top = 10
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
+        self.display_left = CAMERA_MARGIN
+        self.display_top = CAMERA_MARGIN
+        self.faces = []
+        self.recognized = False
 
     def update(self):
         self.ret, self.frame = self.cap.read()
-        if ( self.ret == False ):
+        if self.ret == False:
             print("cannot update video")
             exit(1)
-        # そのままだと何故か回転してしまうので予め回転しておく
-        self.frame2 = cv2.rotate(self.frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
-        self.surface = pygame.pixelcopy.make_surface(cv2.cvtColor(self.frame2, cv2.COLOR_BGR2RGB))
+        self.recognition()
+        self.surface = self.cvtToSurface()
 
     def draw(self, screen):
-        screen.blit(self.surface, (10,10))
-        # screen.blit(self.frame, (self.display.left, self.display.top))
+        screen.fill((0,128,0))
+        screen.blit(self.surface, (self.display_left, self.display_top))
+        self.detect_btn.draw(screen)
+        self.playgame_btn.draw(screen)
+        self.reshoot_btn.draw(screen)
+    
+    def cvtToSurface(self):
+        # そのままだと何故か回転してしまうので予め回転しておく
+        rotated_frame = cv2.rotate(self.frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+        recolored_frame = cv2.cvtColor(rotated_frame, cv2.COLOR_BGR2RGB)
+        return pygame.pixelcopy.make_surface(recolored_frame)
+    
+    def recognition(self):
+        gray_frame = cv2.cvtColor(self.frame, cv2.COLOR_BGR2GRAY)
+        self.faces = self.cascade.detectMultiScale(gray_frame)
+        if len(self.faces)!=0:
+            for x, y, w, h in self.faces:
+                cv2.rectangle(self.frame, (x, y), (x + w, y + h), (0, 0, 255), 2)
+            cv2.imwrite('detect.png', self.frame)
+            self.recognized = True
+        else:
+            self.recognized = False
+    
+    def create_block(self):
+        pass
 
 class block_breaker:
     def __init__(self):
+        """初期化"""
         pygame.init()
         self.screen = pygame.display.set_mode(SCREEN.size)
         pygame.display.set_caption("Block Breaker")
+        """TITLE"""
         Title.bgm_sound = pygame.mixer.Sound("dq1.wav") # タイトル画面のBGM取得
+        # タイトル画面のボタンを作成
+        self.start_btn = Button(SCREEN.centerx, SCREEN.height * 0.6, 80, 16, (255, 0, 0), (255, 255, 255), "START", True)
+        self.start_btn.hide = False     # ボタンのhideフラグをFalseにする
+        self.title = Title("logo.png", self.start_btn)                      # タイトル画面
+        """SELECT"""
+        self.select =  Select()                                             # セレクト画面
+        """CAMERA"""
+        self.detect_btn = Button(LEFT_AREA.centerx, CAMERA_AREA.height+100, 80, 16, (255, 0, 0), (255, 255, 255), "DETECT", True)
+        self.path = '/home/denjo/experiment/cvgl/opencv/data/haarcascades/haarcascade_frontalface_default.xml'
+        """RCOGNIZE"""
+        self.playgame_btn = Button(LEFT_AREA.centerx, CAMERA_AREA.height+60, 80, 16, (255, 0, 0), (255, 255, 255), "PLAY GAME", True)
+        self.reshoot_btn = Button(LEFT_AREA.centerx, CAMERA_AREA.height+140, 80, 16, (255, 0, 0), (255, 255, 255), "RESHOOT", True)
+        """CAMERA SET UP"""
+        self.camera = Camera(self.path, 0, self.detect_btn, self.playgame_btn, self.reshoot_btn)     # カメラ
+        """GAME"""
         Ball.paddle_sound = pygame.mixer.Sound("dq1.wav")    # パドルにボールが衝突した時の効果音取得
         Ball.block_sound = pygame.mixer.Sound("dq1.wav") # ブロックにボールが衝突した時の効果音取得
         Ball.gameover_sound = pygame.mixer.Sound("dq1.wav")    # ゲームオーバー時の効果音取得
@@ -250,13 +307,7 @@ class block_breaker:
         self.paddle = Paddle("paddle.png")                                  # パドルの作成
         self.score = Score(10, 10)                                          # スコアを画面(10, 10)に表示
         Ball("ball.png", self.paddle, self.blocks, self.score, 5, 135, 45)  # ボールを作成
-        # タイトル画面のボタンを作成
-        self.start_btn = Button(SCREEN.centerx, SCREEN.height * 0.6, 80, 16, (255, 0, 0), (255, 255, 255), "START", True)
-        self.title = Title("logo.png", self.start_btn)                      # タイトル画面
-        print(self.title.logo)
-        self.select =  Select()                                             # セレクト画面
-        # カメラ
-        self.camera = Camera('/home/denjo/experiment/cvgl/opencv/data/haarcascades/haarcascade_frontalface_default.xml', 0) 
+        """ループ開始"""
         self.game_state = TITLE                                             # ゲームの状態をTITLEにする
         self.main_loop()                                                    # メインループを起動
     
@@ -277,24 +328,23 @@ class block_breaker:
             self.select.update()
         elif self.game_state == CAMERA:
             self.camera.update()
+        elif self.game_state == RECOGNIZE:
+            pass
         elif self.game_state == GAME:
             self.game_group.update()        # 全てのスプライトグループを更新
 
     def render(self):
         """ゲームオブジェクトのレンダリング"""
         if self.game_state == TITLE:
-            self.screen.fill((0,0,128))
             self.title.draw(self.screen)
         elif self.game_state == SELECT:
-            self.screen.fill((0,128,0))
             self.game_state = CAMERA
-        elif self.game_state == CAMERA:
+        elif self.game_state == CAMERA or self.game_state == RECOGNIZE:
             self.camera.draw(self.screen)
         elif self.game_state == GAME:
-            self.screen.fill((0,20,0))
+            self.screen.fill((200,200,200))
             self.game_group.draw(self.screen)   # 全てのスプライトグループを描画 
             self.score.draw(self.screen)        # スコアを描画  
-            pygame.display.update()             # 画面更新 
     
     def create_block(self):
         # ブロックの作成(14*10)
@@ -318,12 +368,15 @@ class block_breaker:
                 self.select_handler(event)
             elif self.game_state == CAMERA:
                 self.camera_handler(event)
+            elif self.game_state == RECOGNIZE:
+                self.recognize_handler(event)
             elif self.game_state == GAME:
                 self.game_handler(event)
 
     def title_handler(self, event):
         """タイトル画面のイベントハンドラ"""
         if (self.title.start_btn.pushed(event)):
+            self.camera.detect_btn.hide = False
             self.game_state = SELECT
     
     def select_handler(self, event):
@@ -331,7 +384,27 @@ class block_breaker:
         pass
     
     def camera_handler(self, event):
-        pass
+        """カメラ画面のイベントハンドラ"""
+        if self.camera.detect_btn.pushed(event):
+            if self.camera.recognized:
+                self.camera.detect_btn.hide = True
+                self.camera.playgame_btn.hide = False
+                self.camera.reshoot_btn.hide = False
+                self.game_state = RECOGNIZE
+    
+    def recognize_handler(self, event):
+        """RECOGNIZEモードのイベントハンドラ"""
+        if self.camera.playgame_btn.pushed(event):
+            self.camera.playgame_btn.hide = True
+            self.camera.reshoot_btn.hide = True
+            self.camera.create_block()
+            self.create_block()
+            self.game_state = GAME
+        elif self.camera.reshoot_btn.pushed(event):
+            self.camera.playgame_btn.hide = True
+            self.camera.reshoot_btn.hide = True
+            self.camera.detect_btn.hide = False
+            self.game_state = CAMERA
     
     def game_handler(self, event):
         pass
