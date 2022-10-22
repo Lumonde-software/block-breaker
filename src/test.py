@@ -119,6 +119,7 @@ class Block(pygame.sprite.Sprite):
     def __init__(self, filename, x, y):
         pygame.sprite.Sprite.__init__(self, self.containers)
         self.image = pygame.image.load(filename).convert()
+        print(type(self.image))
         self.rect = self.image.get_rect()
         # ブロックの左上座標
         self.rect.left = SCREEN.left + x * self.rect.width
@@ -155,18 +156,18 @@ def main():
     Block.containers = group, blocks
 
     # パドルの作成
-    paddle = Paddle("paddle.png")
+    paddle = Paddle("png/paddle.png")
 
     # ブロックの作成(14*10)
     for x in range(1, 15):
         for y in range(1, 11):
-            Block("block.png", x, y)
+            Block("png/block.png", x, y)
 
     # スコアを画面(10, 10)に表示
     score = Score(10, 10)    
 
     # ボールを作成
-    Ball("ball.png", paddle, blocks, score, 5, 135, 45)
+    Ball("png/ball.png", paddle, blocks, score, 5, 135, 45)
     
     clock = pygame.time.Clock()
 
