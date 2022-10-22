@@ -15,7 +15,7 @@ CAMERA_FPS = 30
 CAMERA_WIDTH = 640
 CAMERA_HEIGHT = 480
 CAMERA_MARGIN = 40
-FACE_MARGIN = 104
+FACE_MARGIN = 88
 
 CAMERA_AREA = Rect(0, 0, CAMERA_WIDTH+CAMERA_MARGIN*2, CAMERA_HEIGHT+CAMERA_MARGIN*2)
 CAMERA_FRAME = Rect(CAMERA_MARGIN, CAMERA_MARGIN, CAMERA_WIDTH, CAMERA_HEIGHT)
@@ -24,7 +24,7 @@ RIGHT_AREA = Rect(LEFT_AREA.width, 0, 320, LEFT_AREA.height)
 SCREEN = Rect(0, 0, LEFT_AREA.width+RIGHT_AREA.width, LEFT_AREA.height)
 FACE_AREA = Rect(FACE_MARGIN, FACE_MARGIN, LEFT_AREA.width-FACE_MARGIN*2, LEFT_AREA.width-FACE_MARGIN*2)
 
-SIZE_OF_MOSAIC = 32
+SIZE_OF_MOSAIC = 64
 
 BLOCK_SIZE = int(FACE_AREA.width / SIZE_OF_MOSAIC)
 
@@ -140,7 +140,6 @@ class Ball(pygame.sprite.Sprite):
 class Block(pygame.sprite.Sprite):
     def __init__(self, color, x, y):
         pygame.sprite.Sprite.__init__(self, self.containers)
-        print(color)
         self.color = (int(color[0]), int(color[1]), int(color[2])) 
         self.width = BLOCK_SIZE
         self.height = BLOCK_SIZE
@@ -262,10 +261,6 @@ class Camera():
         if self.ret == False:
             print("cannot update video")
             exit(1)
-        cv.imshow("result", self.frame)
-        if(cv.waitKey(10) & 0xFF == ord('q')):
-            cv.destroyAllWindows()
-            self.cap.release()
         self.recognition()
         self.surface = self.cvtToSurface(self.frame)
 
@@ -289,15 +284,17 @@ class Camera():
             self.copy_frame = np.copy(self.frame)
             for x, y, w, h in self.faces:
                 cv.rectangle(self.frame, (x, y), (x + w, y + h), (0, 0, 255), 2)
-            cv.imwrite('detect.png', self.frame)
+            cv.imwrite('png/detect.png', self.frame)
             self.recognized = True
         else:
-            self.recognized = False
+            self.recognized = FalseLEFT_AREA
 
-    def mosaic(self, img, scale):
+    def mosaic(self, img, size):
         h, w = img.shape[:2]  # 画像の大きさ
         # 画像を scale (0 < scale <= 1) 倍に縮小する。
-        tmp = cv.resize(img, dsize=None, fx=scale, fy=scale, interpolation=cv.INTER_NEAREST)
+        tmp = cv.resize(img, dsize=size, interpolation=cv.INTER_NEAREST)
+        # tmp = cv.resize(img, dsize=None, fx=scale, fy=scale, interpolation=cv.INTER_NEAREST)
+        print(tmp.shape)
         # # 元の大きさに拡大する。
         # dst = cv.resize(tmp, dsize=(w, h), interpolation=cv.INTER_NEAREST)
         # return dst
@@ -310,28 +307,34 @@ class Camera():
         x0 = int(x - width*0.3)
         x1 = int(x + width*1.3)
         roi = self.copy_frame[y0:y1, x0:x1]
+        """ gaussianBlur
+        blurred_img = cv.GaussianBlur(roi, (9,9), 10.0)
+        roi = cv.addWeighted(roi, 2.0, blurred_img, -1.0, 0, roi)
+        """
+        """ kernel
+        kernel = np.array([
+            [-1, -1, -1],
+            [-1, 9, -1],
+            [-1, -1, -1]
+        ])
+        roi = cv.filter2D(roi, -1, kernel)
+        """
         if width < height:
-            # self.copy_frame[y0:y1, x0:x1] = self.mosaic(roi, SIZE_OF_MOSAIC/height)
-            self.mosaic_frame = self.mosaic(roi, SIZE_OF_MOSAIC/height)
+            self.mosaic_frame = self.mosaic(roi, (int(width*SIZE_OF_MOSAIC/height), SIZE_OF_MOSAIC))
             self.cvtToSurface(self.mosaic_frame)
             num_w = len(self.mosaic_frame[0])
-            for i in range(len(self.mosaic_frame[0])):
-                for j in range(SIZE_OF_MOSAIC):
-                    Block(self.mosaic_frame[i][j], LEFT_AREA.centerx - (num_w - i) * BLOCK_SIZE, FACE_AREA.y + j * BLOCK_SIZE)
+            for i in range(SIZE_OF_MOSAIC):
+                for j in range(num_w):
+                    Block(self.mosaic_frame[i][j], FACE_AREA.centerx - (num_w//2 - j) * BLOCK_SIZE, FACE_AREA.y + i * BLOCK_SIZE)
         else:
-            self.mosaic_frame = self.mosaic(roi, SIZE_OF_MOSAIC/width)
+            self.mosaic_frame = self.mosaic(roi, (SIZE_OF_MOSAIC, int(height*SIZE_OF_MOSAIC/width)))
             self.cvtToSurface(self.mosaic_frame)
             num_h = len(self.mosaic_frame)
-            for i in range(SIZE_OF_MOSAIC):
-                for j in range(len(self.mosaic_frame)):
-                    Block(self.mosaic_frame[i][j], LEFT_AREA.x + i * BLOCK_SIZE, FACE_AREA.centery - (num_h - j) * BLOCK_SIZE)
+            for i in range(num_h):
+                for j in range(SIZE_OF_MOSAIC):
+                    Block(self.mosaic_frame[i][j], FACE_AREA.x + j * BLOCK_SIZE, FACE_AREA.centery - (num_h//2 - i) * BLOCK_SIZE)
 
-        cv.imshow("result", self.copy_frame)
-        if(cv.waitKey(10) & 0xFF == ord('q')):
-            cv.destroyAllWindows()
-            self.cap.release()
-
-
+        self.face_num += 1
 
 class block_breaker:
     def __init__(self):
