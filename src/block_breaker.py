@@ -279,7 +279,6 @@ class Camera():
         if self.ret == False:
             print("cannot update video")
             exit(1)
-        # self.frame = cv.imread("png/detect.png")
         self.recognition()
         self.surface = self.cvtToSurface(self.frame)
 
@@ -302,8 +301,7 @@ class Camera():
         self.faces = self.cascade.detectMultiScale(gray_frame)
         if len(self.faces)>0:
             self.copy_frame = np.copy(self.frame)
-            self.copy2_frame = np.copy(self.frame) #!!! FIXME
-            # self.copy2_surface = self.cvtToSurface(self.copy2_frame)
+            self.copy2_frame = np.copy(self.frame)
             for x, y, w, h in self.faces:
                 cv.rectangle(self.frame, (x, y), (x + w, y + h), (0, 0, 255), 2)
             cv.imwrite('png/detect.png', self.frame)
@@ -316,17 +314,7 @@ class Camera():
     
     def create_block(self):
         x, y, width, height = self.faces[self.face_num]
-        self.xx = x #!!! FIXME
-        self.yy = y
-        self.w = width
-        self.h = height
-        # rate = 0.2
-        # y0 = int(y - height*rate)
-        # y1 = int(y + height*(1+rate))
-        # x0 = int(x - width*rate)
-        # x1 = int(x + width*(1+rate))
-        # roi = self.copy_frame[y0:y1, x0:x1]
-        roi = self.copy_frame[y:y+height, x:x+width] # あってる
+        roi = self.copy_frame[y:y+height, x:x+width]
         """ gaussianBlur
         blurred_img = cv.GaussianBlur(roi, (9,9), 10.0)
         roi = cv.addWeighted(roi, 2.0, blurred_img, -1.0, 0, roi)
@@ -340,41 +328,25 @@ class Camera():
         roi = cv.filter2D(roi, -1, kernel)
         """
         if width < height:
-            print("error!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+            roi = cv.rotate(roi, cv.ROTATE_90_COUNTERCLOCKWISE)
             self.mosaic_frame = self.mosaic(roi, (int(width*SIZE_OF_MOSAIC/height), SIZE_OF_MOSAIC))
-            # self.copy_surface = self.cvtToSurface(cv.resize(self.copy_frame, dsize=None, fx=BLOCK_SIZE, fy=BLOCK_SIZE, interpolation=cv.INTER_NEAREST))
-            # self.cvtToSurface(self.mosaic_frame)
-            # num_w = len(self.mosaic_frame[0])
-            # for i in range(SIZE_OF_MOSAIC):
-            #     for j in range(num_w):
-            #         Block(self.mosaic_frame[i][j], FACE_AREA.y + i * BLOCK_SIZE, FACE_AREA.centerx - (num_w//2 - j) * BLOCK_SIZE)
+            scale = BLOCK_SIZE*SIZE_OF_MOSAIC/height
+            self.inside_frame = self.copy2_frame[int(y-FACE_AREA.y/scale):CAMERA_HEIGHT,0:int(x+width+FACE_AREA.x/scale)]
+            self.copy_surface = self.cvtToSurface(cv.resize(self.inside_frame,dsize=None,fx=scale,fy=scale,interpolation=cv.INTER_NEAREST))
+            num_w = len(self.mosaic_frame[0])
+            for i in range(SIZE_OF_MOSAIC):
+                for j in range(num_w):
+                    Block(self.mosaic_frame[i][j], FACE_AREA.y + i * BLOCK_SIZE, FACE_AREA.centerx - (num_w//2 - j) * BLOCK_SIZE)
         else:
             roi = cv.rotate(roi, cv.ROTATE_90_COUNTERCLOCKWISE)
             self.mosaic_frame = self.mosaic(roi, (SIZE_OF_MOSAIC, int(height*SIZE_OF_MOSAIC/width)))
             scale = BLOCK_SIZE*SIZE_OF_MOSAIC/width
-            # scale = BLOCK_SIZE*SIZE_OF_MOSAIC/width/(1+rate*2)
-            # resized = cv.resize(self.frame, dsize=None, fx=scale, fy=scale, interpolation=cv.INTER_NEAREST)
-            # self.copy_surface = self.cvtToSurface(resized)
-            # self.image_x = -((CAMERA_WIDTH-x)*scale - FACE_AREA.x)
-            # self.image_y = -(y*scale - FACE_AREA.y)
-
-            # self.copy2_frame = cv.rotate(self.copy2_frame, cv.ROTATE_90_COUNTERCLOCKWISE)
-            print(x,y)
             self.inside_frame = self.copy2_frame[int(y-FACE_AREA.y/scale):CAMERA_HEIGHT,0:int(x+width+FACE_AREA.x/scale)]
-            # self.inside_frame = self.copy2_frame[int(x-FACE_AREA.x/scale):CAMERA_WIDTH,int(y-FACE_AREA.y/scale):CAMERA_HEIGHT]
-            # self.inside_frame = cv.rotate(self.inside_frame, cv.ROTATE_90_CLOCKWISE)
             self.copy_surface = self.cvtToSurface(cv.resize(self.inside_frame,dsize=None,fx=scale,fy=scale,interpolation=cv.INTER_NEAREST))
-            self.copy2_surface = self.cvtToSurface(self.inside_frame)
-
-            # self.display_surface = self.cvtToSurface(resized[int(image_y):int(CAMERA_HEIGHT*scale), int(image_x):int(CAMERA_WIDTH*scale)])
-            # self.image_x = FACE_AREA.left - x0*scale
-            # self.image_y = FACE_AREA.top - y0*scale
-            # self.cvtToSurface(self.mosaic_frame)
             num_h = len(self.mosaic_frame)
             for i in range(num_h):
                 for j in range(SIZE_OF_MOSAIC):
                     Block(self.mosaic_frame[i][j], FACE_AREA.centery - (num_h//2 - i) * BLOCK_SIZE, FACE_AREA.x + j * BLOCK_SIZE)
-                    # Block(self.mosaic_frame[i][SIZE_OF_MOSAIC-j-1], FACE_AREA.x + j * BLOCK_SIZE, FACE_AREA.centery - (num_h//2 - i) * BLOCK_SIZE)
         self.face_num += 1
 
 
@@ -455,15 +427,8 @@ class block_breaker:
         elif self.game_state == GAME:
             self.screen.fill((200,200,200))
             self.screen.blit(self.camera.copy_surface, (0,0))
-            # self.screen.blit(self.camera.copy_surface, (self.image_x, self.image_y)) #!!! FIXME
             self.game_group.draw(self.screen)   # 全てのスプライトグループを描画 
             pygame.draw.rect(self.screen, (0,0,0), RIGHT_AREA)
-            # a = pygame.Surface(CAMERA_FRAME.size) # !!! FIXME
-            # a.blit(self.camera.copy2_surface,(10,10))
-            # b = pygame.Surface((self.camera.w,self.camera.h))
-            # a.blit(b,(0,0))
-            # a.blit(b,(self.camera.xx,self.camera.yy))
-            # self.screen.blit(a,(0,0))
             self.score.draw(self.screen)        # スコアを描画
         elif self.game_state == POSED:
             pass
