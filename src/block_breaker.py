@@ -17,7 +17,7 @@ CAMERA_MARGIN = 40
 FACE_MARGIN = 88
 SIZE_OF_MOSAIC = 64
 
-BLOCK_SIZE = 8
+BLOCK_SIZE = int(8*64/SIZE_OF_MOSAIC)
 
 FACE_AREA_SIZE = SIZE_OF_MOSAIC*BLOCK_SIZE
 
@@ -26,7 +26,9 @@ CAMERA_FRAME = Rect(CAMERA_MARGIN, CAMERA_MARGIN, CAMERA_WIDTH, CAMERA_HEIGHT)
 LEFT_AREA = Rect(0, 0, CAMERA_AREA.width, CAMERA_AREA.height+320)
 RIGHT_AREA = Rect(LEFT_AREA.width, 0, 320, LEFT_AREA.height)
 SCREEN = Rect(0, 0, LEFT_AREA.width+RIGHT_AREA.width, LEFT_AREA.height)
+print(SCREEN.size)
 FACE_AREA = Rect((LEFT_AREA.width-FACE_AREA_SIZE)//2, (LEFT_AREA.width-FACE_AREA_SIZE)//2, FACE_AREA_SIZE, FACE_AREA_SIZE)
+print(FACE_AREA.height)
 
 
 TITLE, SELECT, CAMERA, RECOGNIZE, GAME, POSED, CLEAR, OVER = range(8)
@@ -48,8 +50,9 @@ class Paddle(pygame.sprite.Sprite):
 
 # ボールのクラス
 class Ball(pygame.sprite.Sprite):
+    hit_sum = 0
     # コンストラクタ（初期化メソッド）
-    def __init__(self, filename, paddle, blocks, balls, score, speed, angle_left, angle_right):
+    def __init__(self, filename, paddle, blocks, balls, score, speed, angle_left, angle_right, increase=False, left=0, top=0, dx=0, dy=0):
         pygame.sprite.Sprite.__init__(self, self.containers)
         self.image = pygame.image.load(filename).convert()
         self.rect = self.image.get_rect()
@@ -57,12 +60,23 @@ class Ball(pygame.sprite.Sprite):
         self.paddle = paddle  # パドルへの参照
         self.blocks = blocks  # ブロックグループへの参照
         self.balls = balls  
-        self.update = self.start # ゲーム開始状態に更新
         self.score = score
         self.hit = 0  # 連続でブロックを壊した回数
+        # self.hit_sum = 0
         self.speed = speed # ボールの初期速度
         self.angle_left = angle_left # パドルの反射方向(左端:135度）
-        self.angle_right = angle_right # パドルの反射方向(右端:45度）
+        self.angle_right = angle_right # パドルの反射方向(右端:45度)
+        if increase:
+            self.update = self.move # 増殖により生まれた場合は最初から動く
+            self.rect.left = left
+            self.rect.top = top
+            # angle = math.atan2(dy, dx)
+            # self.speed = math.sqrt(dx**2+dy**2)
+            # self.dx = *math.cos(angle)
+            self.dx = dx
+            self.dy = dy
+        else:
+            self.update = self.start # ゲーム開始状態に更新
 
     # ゲーム開始状態（マウスを左クリック時するとボール射出）
     def start(self):
@@ -110,7 +124,6 @@ class Ball(pygame.sprite.Sprite):
             # self.update = self.start                    # ボールを初期状態に
             self.remove(self.balls)
             self.hit = 0
-            self.score.add_score(-100)                  # スコア減点-100点
             if not len(self.balls) > 0:
                 gameover = pygame.event.Event(GAMEOVER)
                 pygame.event.post(gameover)
@@ -144,8 +157,13 @@ class Ball(pygame.sprite.Sprite):
                     self.rect.top = block.rect.bottom
                     self.dy = -self.dy
                 self.block_sound.play()     # 効果音を鳴らす
+                self.hit_sum += 1
                 self.hit += 1               # 衝突回数
                 self.score.add_score(self.hit * 10)   # 衝突回数に応じてスコア加点
+        
+        if self.hit_sum >= 30:
+            Ball("png/rectangle.png", self.paddle, self.blocks, self.balls, self.score, 5, 135, 45, True, self.rect.left, self.rect.top, self.dx, self.dy)
+            self.hit_sum = 0
 
 # ブロックのクラス
 class Block(pygame.sprite.Sprite):
@@ -216,10 +234,13 @@ class Button():
         self.hide = not self.hide
 
 class Title():
-    def __init__(self, logofile, musicfile):
+    def __init__(self, logofile, musicfile, backfile):
         self.logo = pygame.image.load(logofile)
-        self.musicfile = musicfile
-        pygame.mixer.music.load(self.musicfile)
+        pygame.mixer.music.load(musicfile)
+        self.back_img = pygame.image.load("png/lena_block.png")
+        back_rect = self.back_img.get_rect()
+        scale = SCREEN.width / back_rect.width
+        self.back_img = pygame.transform.rotozoom(self.back_img, 0, scale)
         self.logo_rect = self.logo.get_rect()
         self.logo_img = pygame.transform.rotozoom(self.logo, 0, 0.9*SCREEN.width/self.logo_rect.width)
         self.logo_img_rect = self.logo_img.get_rect()
@@ -234,7 +255,7 @@ class Title():
         pass
 
     def draw(self, screen):
-        screen.fill((128,0,0))
+        screen.blit(self.back_img, (0, -50))
         screen.blit(self.logo_img, (self.logo_img_rect.left, self.logo_img_rect.top))
         self.start_btn.draw(screen)
 
@@ -279,6 +300,7 @@ class Camera():
         if self.ret == False:
             print("cannot update video")
             exit(1)
+        self.frame = cv.imread("../sample/data/lena.jpg")
         self.recognition()
         self.surface = self.cvtToSurface(self.frame)
 
@@ -314,6 +336,10 @@ class Camera():
     
     def create_block(self):
         x, y, width, height = self.faces[self.face_num]
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
         roi = self.copy_frame[y:y+height, x:x+width]
         """ gaussianBlur
         blurred_img = cv.GaussianBlur(roi, (9,9), 10.0)
@@ -357,7 +383,7 @@ class block_breaker:
         self.screen = pygame.display.set_mode(SCREEN.size)
         pygame.display.set_caption("Block Breaker")
         """TITLE"""
-        self.title = Title("png/logo.png", "sound/bgm.wav")                      # タイトル画面
+        self.title = Title("png/logo.png", "sound/bgm.wav", "png/lena_block.png")                      # タイトル画面
         """SELECT"""
         self.select =  Select()                                             # セレクト画面
         """CAMERA"""
@@ -429,6 +455,9 @@ class block_breaker:
             self.screen.blit(self.camera.copy_surface, (0,0))
             self.game_group.draw(self.screen)   # 全てのスプライトグループを描画 
             pygame.draw.rect(self.screen, (0,0,0), RIGHT_AREA)
+            a = pygame.Surface(FACE_AREA.size)
+            a.blit(self.screen, (115-self.camera.x, 99-self.camera.y))
+            pygame.image.save(a,"png/lena_block.png")
             self.score.draw(self.screen)        # スコアを描画
         elif self.game_state == POSED:
             pass
