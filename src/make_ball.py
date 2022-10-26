@@ -8,7 +8,7 @@ import cv2 as cv
 import numpy as np
 import block_breaker as bb
 
-a = 1
+a = 4
 
 SCREEN = Rect(0,0,bb.BLOCK_SIZE-a*2,bb.BLOCK_SIZE-a*2)
 
