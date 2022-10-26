@@ -18,6 +18,8 @@ CAMERA_MARGIN = 40
 FACE_MARGIN = 88
 SIZE_OF_MOSAIC = 32
 
+RIGHT_AREA_MARGIN = 30
+
 BLOCK_SIZE = int(8*64/SIZE_OF_MOSAIC)
 
 FACE_AREA_SIZE = SIZE_OF_MOSAIC*BLOCK_SIZE
@@ -29,7 +31,7 @@ RIGHT_AREA = Rect(LEFT_AREA.width, 0, 500, LEFT_AREA.height)
 SCREEN = Rect(0, 0, LEFT_AREA.width+RIGHT_AREA.width, LEFT_AREA.height)
 FACE_AREA = Rect((LEFT_AREA.width-FACE_AREA_SIZE)//2, (LEFT_AREA.width-FACE_AREA_SIZE)//2, FACE_AREA_SIZE, FACE_AREA_SIZE)
 
-TITLE, CAMERA, RECOGNIZE, GAME, POSED, CLEAR, OVER, AUTO = range(8)
+TITLE, CAMERA, RECOGNIZE, GAME, POSED, CLEAR, OVER, AUTO, NEXT = range(9)
 GAMEOVER = pygame.USEREVENT
 GAMECLEAR = pygame.USEREVENT+1
 
@@ -212,22 +214,44 @@ class Block(pygame.sprite.Sprite):
 # スコアのクラス
 class Score():
     def __init__(self, x, y):
-        self.sysfont = pygame.font.SysFont("notosanscjksc", 20)
+        self.sysfont = pygame.font.SysFont("notosanscjksc", 30)
         self.score = 0
         (self.x, self.y) = (x, y)
     def draw(self, screen):
-        img = self.sysfont.render("SCORE:"+str(self.score), True, (255,255,250))
+        img = self.sysfont.render("スコア: "+str(self.score), True, (255,255,255))
         screen.blit(img, (self.x, self.y))
     def add_score(self, x):
         self.score += x
 
-# class Gauge():
-#     def __init__(self, x, y, balls):
-#         self.sysfont = pygame.font.SysFont("notosanscjksc", 40)
-#         self.balls = balls
-#         (self.x, self.y) = (x, y)
-#     def draw(self, screen):
+class Stage():
+    def __init__(self, x, y, detect_num):
+        self.sysfont = pygame.font.SysFont("notosanscjksc", 40)
+        self.detect_num = detect_num
+        self.stage_num = 1
+        self.text = self.sysfont.render("ステージ "+str(self.stage_num)+" / "+str(self.detect_num), True, (255,255,255))
+        self.rect = self.text.get_rect()
+        self.text = pygame.transform.rotozoom(self.text, 0, (RIGHT_AREA.width-RIGHT_AREA_MARGIN*2)/self.rect.width)
+        (self.x, self.y) = (x, y)
+    def draw(self, screen):
+        screen.blit(self.text, (self.x, self.y))
+    def next_stage(self):
+        self.stage_num += 1
+        self.text = self.sysfont.render("ステージ "+str(self.stage_num)+" / "+str(self.detect_num), True, (255,255,255))
+        self.rect = self.text.get_rect()
+        self.text = pygame.transform.rotozoom(self.text, 0, (RIGHT_AREA.width-RIGHT_AREA_MARGIN*2)/self.rect.width)
 
+class Gauge():
+    def __init__(self, x, y):
+        self.sysfont = pygame.font.SysFont("notosanscjksc", 30)
+        self.text = self.sysfont.render("ボール増殖ゲージ", True, (255,255,255))
+        self.rect = self.text.get_rect()
+        (self.x, self.y) = (x, y)
+    def draw(self, screen, hit_sum):
+        screen.blit(self.text, (self.x, self.y))
+        pygame.draw.rect(screen, (255,255,255), Rect(self.x, self.y+self.rect.height+10, 440, self.rect.height), 1)
+        if hit_sum > 10:
+            hit_sum = 10
+        pygame.draw.rect(screen, (255,255,255), Rect(self.x+2, self.y+self.rect.height+10+2, int((hit_sum/10)*436), self.rect.height-4))
 
 class Button():
     def __init__(self, x, y, size, pad, color, txtcolor, text, description1, description2, center=False):
@@ -327,14 +351,15 @@ class Camera():
         self.faces = []
         self.recognized = False
         self.face_num = 0
-        self.image_x = 0
-        self.image_y = 0
+        # self.image_x = 0
+        # self.image_y = 0
 
     def update(self):
         self.ret, self.frame = self.cap.read()
         if self.ret == False:
             print("cannot update video")
             exit(1)
+        self.frame = cv.imread("png/detect.png")
         self.recognition()
         self.surface = self.cvtToSurface(self.frame)
 
@@ -360,7 +385,7 @@ class Camera():
             self.copy2_frame = np.copy(self.frame)
             for x, y, w, h in self.faces:
                 cv.rectangle(self.frame, (x, y), (x + w, y + h), (0, 0, 255), 2)
-            cv.imwrite('png/detect.png', self.frame)
+            # cv.imwrite('png/detect.png', self.frame)
             self.recognized = True
         else:
             self.recognized = False
@@ -447,7 +472,8 @@ class block_breaker:
         Ball.containers = self.game_group, self.balls, self.game_group2
         Block.containers = self.game_group, self.blocks, self.game_group2
         self.paddle = Paddle("png/paddle.png")                                  # パドルの作成
-        self.score = Score(RIGHT_AREA.left+10, 10)                                          # スコアを画面(10, 10)に表示
+        self.score = Score(RIGHT_AREA.left+RIGHT_AREA_MARGIN, RIGHT_AREA_MARGIN+140)                                          # スコアを画面(10, 10)に表示
+        self.gauge = Gauge(RIGHT_AREA.left + RIGHT_AREA_MARGIN, RIGHT_AREA_MARGIN+210)
         Ball("png/rectangle.png", self.paddle, self.blocks, self.balls, self.score, 5, 135, 45)  # ボールを作成
         """POSED"""
         self.alpha_screen =pygame.Surface(SCREEN.size,flags=pygame.SRCALPHA) 
@@ -455,6 +481,8 @@ class block_breaker:
         """OVER"""
         """CLEAR"""
         self.finish_btn = Button(SCREEN.centerx, SCREEN.height * 0.7, 70, 16, (255, 0, 0), (255, 255, 255), "ゲーム終了", "", "", True)
+        """NEXT"""
+        self.next_btn = Button(SCREEN.centerx, SCREEN.height * 0.7, 70, 16, (255, 0, 0), (255, 255, 255), "次のステージ", "", "", True)
         """ループ開始"""
         self.game_state = TITLE                                             # ゲームの状態をTITLEにする
         self.fps = 60
@@ -479,7 +507,7 @@ class block_breaker:
             pass
         elif self.game_state == GAME:
             self.game_group.update()        # 全てのスプライトグループを更新
-        elif self.game_state == POSED or self.game_state == OVER or self.game_state == CLEAR:
+        elif self.game_state == POSED or self.game_state == OVER or self.game_state == CLEAR or self.game_state == NEXT:
             pass
         elif self.game_state == AUTO:
             self.game_group2.update()
@@ -513,10 +541,19 @@ class block_breaker:
             self.game_group2.draw(self.screen)
             self.paddle.auto_draw(self.screen)
             self.draw_right_area(self.screen)
+        elif self.game_state == NEXT:
+            self.next_btn.draw(self.screen)
         
     def draw_right_area(self, screen):
-        pygame.draw.rect(self.screen, (0,0,0), RIGHT_AREA)
-        self.score.draw(self.screen)        # スコアを描画
+        pygame.draw.rect(screen, (0,0,0), RIGHT_AREA)
+        self.stage.draw(screen)        
+        pygame.draw.line(screen, (255,255,255), (RIGHT_AREA.left + RIGHT_AREA_MARGIN, RIGHT_AREA_MARGIN+130), (SCREEN.width - RIGHT_AREA_MARGIN, RIGHT_AREA_MARGIN+130))
+        self.score.draw(screen)        
+        pygame.draw.line(screen, (255,255,255), (RIGHT_AREA.left + RIGHT_AREA_MARGIN, RIGHT_AREA_MARGIN+200), (SCREEN.width - RIGHT_AREA_MARGIN, RIGHT_AREA_MARGIN+200))
+        # hit_sum = 
+        # self.gauge.draw(screen, hit_sum)
+        
+
 
     def check_event(self):
         """イベントハンドラ"""
@@ -536,12 +573,16 @@ class block_breaker:
                 self.recognize_handler(event)
             elif self.game_state == GAME:
                 self.game_handler(event)
+                self.common_handler(event)
             elif self.game_state == POSED:
                 self.posed_handler(event)
             elif self.game_state == OVER or self.game_state == CLEAR:
                 self.finish_handler(event)
             elif self.game_state == AUTO:
                 self.auto_handler(event)
+                self.common_handler(event)
+            elif self.game_state == NEXT:
+                self.next_handler(event)
 
     def title_handler(self, event):
         """タイトル画面のイベントハンドラ"""
@@ -568,8 +609,9 @@ class block_breaker:
             self.camera.playgame_btn.invFlag()
             self.camera.reshoot_btn.invFlag()
             self.camera.create_block()
-            self.image_x = self.camera.image_x
-            self.image_y = self.camera.image_y
+            # self.image_x = self.camera.image_x
+            # self.image_y = self.camera.image_y
+            self.stage = Stage(RIGHT_AREA.left+RIGHT_AREA_MARGIN, RIGHT_AREA_MARGIN-10, self.detect_num)
             self.game_state = GAME
         elif self.camera.reshoot_btn.pushed(event) or (event.type == KEYDOWN and event.key == K_BACKSPACE):
             self.backspace_sound.play()
@@ -580,25 +622,9 @@ class block_breaker:
     
     def game_handler(self, event):
         """ゲーム画面のイベントハンドラ"""
-        if event.type == KEYDOWN and event.key == K_p:
-            self.posed_sound.play()
-            self.blit_alpah_screen("POSED")
-            self.game_state = POSED
-        elif event.type == KEYDOWN and event.key == K_a:
+        if event.type == KEYDOWN and event.key == K_a:
             self.fps = 120
             self.game_state = AUTO
-        elif event.type == GAMEOVER:
-            self.title.stop_bgm()
-            self.gameover_sound.play()
-            self.finish_btn.invFlag()
-            self.blit_alpah_screen("GAME OVER")
-            self.game_state = OVER
-        elif event.type == GAMECLEAR or (event.type == KEYDOWN and event.key == K_s):
-            self.title.stop_bgm()
-            self.gameclear_sound.play()
-            self.finish_btn.invFlag()
-            self.blit_alpah_screen("GAME CLEAR!")
-            self.game_state = CLEAR
         elif (event.type == KEYDOWN and event.key == K_SPACE) or pygame.mouse.get_pressed()[0] == 1:
             self.fps = 120
         else:
@@ -619,13 +645,16 @@ class block_breaker:
             exit(1)
 
     def auto_handler(self, event):
+        if event.type == KEYDOWN and event.key == K_a:
+            self.fps = 60
+            self.game_state = GAME
+        
+        
+    def common_handler(self, event):
         if event.type == KEYDOWN and event.key == K_p:
             self.posed_sound.play()
             self.blit_alpah_screen("POSED")
             self.game_state = POSED
-        elif event.type == KEYDOWN and event.key == K_a:
-            self.fps = 60
-            self.game_state = GAME
         elif event.type == GAMEOVER:
             self.title.stop_bgm()
             self.gameover_sound.play()
@@ -635,9 +664,34 @@ class block_breaker:
         elif event.type == GAMECLEAR or (event.type == KEYDOWN and event.key == K_s):
             self.title.stop_bgm()
             self.gameclear_sound.play()
-            self.finish_btn.invFlag()
-            self.blit_alpah_screen("GAME CLEAR!")
-            self.game_state = CLEAR
+            if self.stage.stage_num < self.detect_num:
+                self.next_btn.invFlag()
+                self.blit_alpah_screen("STAGE CLEAR!")
+                self.game_state = NEXT
+            else:
+                self.finish_btn.invFlag()
+                self.blit_alpah_screen("GAME CLEAR!")
+                self.game_state = CLEAR
+    
+    def next_handler(self, event):
+        if self.finish_btn.pushed(event)  or (event.type == KEYDOWN and event.key == K_SPACE):
+            self.stage.next_stage()
+            for ball in self.balls:
+                ball.rect.x = 100
+                ball.rect.y = SCREEN.height + 100
+                ball.dx = 0
+                ball.dy = 0
+                self.hit_sum = 0
+                self.balls.remove(ball)
+                self.game_group.remove(ball)
+                self.game_group2.remove(ball)
+            Ball("png/rectangle.png", self.paddle, self.blocks, self.balls, self.score, 5, 135, 45)  # ボールを作成
+            for block in self.blocks:
+                self.blocks.remove(block)
+                self.game_group.remove(block)
+                self.game_group2.remove(block)
+            self.camera.create_block()
+            self.game_state = GAME
 
     def blit_alpah_screen(self, txt):
         self.alpha_screen.fill((0,0,0,128))
