@@ -256,9 +256,11 @@ class Key():
         self.text_p = self.sysfont.render("ポーズ", True, (255,255,255))
         self.text_a = self.sysfont.render("自動/手動 切り替え", True, (255,255,255))
         self.text_s = self.sysfont.render("ステージスキップ", True, (255,255,255))
+        self.text_left= self.sysfont.render("二倍速　切り替え", True, (255,255,255))
         self.p_img = pygame.transform.rotozoom(pygame.image.load("png/P.jpg"), 0, 2)
         self.s_img = pygame.transform.rotozoom(pygame.image.load("png/S.jpg"), 0, 2)
         self.a_img = pygame.transform.rotozoom(pygame.image.load("png/A.jpg"), 0, 2)
+        self.left_click = pygame.transform.rotozoom(pygame.image.load("png/left_click.png"), 0, 1/20)
     def draw(self, screen):
         pygame.draw.line(screen, (255,255,255), (RIGHT_AREA.left + RIGHT_AREA_MARGIN, RIGHT_AREA_MARGIN+525), (SCREEN.width - RIGHT_AREA_MARGIN, RIGHT_AREA_MARGIN+525))
         screen.blit(self.p_img, (RIGHT_AREA.left + RIGHT_AREA_MARGIN, RIGHT_AREA_MARGIN+560))
@@ -267,6 +269,8 @@ class Key():
         screen.blit(self.text_a, (RIGHT_AREA.left + RIGHT_AREA_MARGIN + 90, RIGHT_AREA_MARGIN+670))
         screen.blit(self.s_img, (RIGHT_AREA.left + RIGHT_AREA_MARGIN, RIGHT_AREA_MARGIN+780))
         screen.blit(self.text_s, (RIGHT_AREA.left + RIGHT_AREA_MARGIN + 90, RIGHT_AREA_MARGIN+780))
+        screen.blit(self.left_click, (RIGHT_AREA.left + RIGHT_AREA_MARGIN, RIGHT_AREA_MARGIN+890))
+        screen.blit(self.text_left, (RIGHT_AREA.left + RIGHT_AREA_MARGIN + 90, RIGHT_AREA_MARGIN+890))
 
 class Button():
     def __init__(self, x, y, size, pad, color, txtcolor, text, description1, description2, center=False):
@@ -372,6 +376,7 @@ class Camera():
         if self.ret == False:
             print("cannot update video")
             exit(1)
+        self.frame = cv.imread("png/sample.jpg")
         self.recognition()
         self.surface = self.cvtToSurface(self.frame)
 
@@ -649,7 +654,7 @@ class block_breaker:
         if event.type == KEYDOWN and event.key == K_a:
             self.fps = 120
             self.game_state = AUTO
-        elif (event.type == KEYDOWN and event.key == K_SPACE) or pygame.mouse.get_pressed()[0] == 1:
+        elif pygame.mouse.get_pressed()[0] == 1:
             self.fps = 120
         else:
             self.fps = 60
